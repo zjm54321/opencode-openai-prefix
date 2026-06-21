@@ -1,5 +1,7 @@
 name: fork-release
 
+# Fork-only manual release workflow for zjm54321/opencode-openai-prefix.
+
 on:
   workflow_dispatch:
     inputs:
