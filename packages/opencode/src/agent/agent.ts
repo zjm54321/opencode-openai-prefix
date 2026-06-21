@@ -61,6 +61,10 @@ const GeneratedAgent = Schema.Struct({
   systemPrompt: Schema.String,
 })
 
+function isOpenAIProvider(providerID: string) {
+  return providerID === "openai" || providerID.startsWith("openai-")
+}
+
 export interface Interface {
   readonly get: (agent: string) => Effect.Effect<Info>
   readonly list: () => Effect.Effect<Info[]>
@@ -381,7 +385,7 @@ export const layer = Layer.effect(
 
         // TODO: clean this up so provider specific logic doesnt bleed over
         const authInfo = yield* auth.get(model.providerID).pipe(Effect.orDie)
-        const isOpenaiOauth = model.providerID === "openai" && authInfo?.type === "oauth"
+        const isOpenaiOauth = isOpenAIProvider(model.providerID) && authInfo?.type === "oauth"
 
         const params = {
           experimental_telemetry: {

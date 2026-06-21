@@ -3,7 +3,7 @@ import { SessionV1 } from "@opencode-ai/core/v1/session"
 import type { NamedError } from "@opencode-ai/core/util/error"
 import { APICallError } from "ai"
 import { setTimeout as sleep } from "node:timers/promises"
-import { Effect, Schedule, Schema } from "effect"
+import { Clock, Effect, Schedule, Schema } from "effect"
 import { LayerNode } from "@opencode-ai/core/effect/layer-node"
 import { CrossSpawnSpawner } from "@opencode-ai/core/cross-spawn-spawner"
 import { SessionRetry } from "../../src/session/retry"
@@ -37,6 +37,49 @@ describe("session.retry.delay", () => {
     const error = apiError()
     const delays = Array.from({ length: 10 }, (_, index) => SessionRetry.delay(index + 1, error))
     expect(delays).toStrictEqual([2000, 4000, 8000, 16000, 30000, 30000, 30000, 30000, 30000, 30000])
+  })
+
+  test("keeps default retry timing when options are unset", () => {
+    expect(SessionRetry.delay(1, apiError())).toBe(SessionRetry.RETRY_INITIAL_DELAY)
+    expect(SessionRetry.delay(2, apiError())).toBe(
+      SessionRetry.RETRY_INITIAL_DELAY * SessionRetry.RETRY_BACKOFF_FACTOR,
+    )
+    expect(SessionRetry.delay(10, apiError())).toBe(SessionRetry.RETRY_MAX_DELAY_NO_HEADERS)
+  })
+
+  test("uses numeric and string retry timing overrides", () => {
+    const retry = {
+      initialDelay: "500",
+      backoffFactor: 3,
+      maxDelayNoHeaders: "4000",
+      maxDelay: "5000",
+    }
+
+    expect(Array.from({ length: 5 }, (_, index) => SessionRetry.delay(index + 1, apiError(), retry))).toStrictEqual([
+      500,
+      1500,
+      4000,
+      4000,
+      4000,
+    ])
+    expect(SessionRetry.delay(4, apiError({}), retry)).toBe(5000)
+  })
+
+  test("ignores invalid retry timing overrides", () => {
+    const retry = {
+      initialDelay: 0,
+      backoffFactor: -1,
+      maxDelayNoHeaders: Number.NaN,
+      maxDelay: Number.POSITIVE_INFINITY,
+    }
+
+    expect(Array.from({ length: 5 }, (_, index) => SessionRetry.delay(index + 1, apiError(), retry))).toStrictEqual([
+      2000,
+      4000,
+      8000,
+      16000,
+      30000,
+    ])
   })
 
   test("prefers retry-after-ms when shorter than exponential", () => {
@@ -86,6 +129,11 @@ describe("session.retry.delay", () => {
     expect(SessionRetry.delay(1, error)).toBe(SessionRetry.RETRY_MAX_DELAY)
   })
 
+  test("honors retry headers and caps them with retry maxDelay override", () => {
+    expect(SessionRetry.delay(1, apiError({ "retry-after-ms": "7000" }), { maxDelay: 6000 })).toBe(6000)
+    expect(SessionRetry.delay(1, apiError({ "retry-after": "7" }), { maxDelay: "6000" })).toBe(6000)
+  })
+
   it.instance("policy updates retry status and increments attempts", () =>
     Effect.gen(function* () {
       const sessionID = SessionID.make("session-retry-test")
@@ -113,6 +161,38 @@ describe("session.retry.delay", () => {
         attempt: 2,
         message: "boom",
       })
+    }),
+  )
+
+  it.instance("policy uses retry timing overrides for retry status next", () =>
+    Effect.gen(function* () {
+      const sessionID = SessionID.make("session-retry-options-test")
+      const error = apiError()
+      const status = yield* SessionStatus.Service
+
+      const step = yield* Schedule.toStepWithMetadata(
+        SessionRetry.policy({
+          provider: "test",
+          parse: Schema.decodeUnknownSync(SessionV1.APIError.Schema),
+          retry: { initialDelay: 1234, backoffFactor: 10, maxDelayNoHeaders: 5000 },
+          set: (info) =>
+            status.set(sessionID, {
+              type: "retry",
+              attempt: info.attempt,
+              message: info.message,
+              next: info.next,
+            }),
+        }),
+      )
+      const before = yield* Clock.currentTimeMillis
+      yield* step(error)
+      const after = yield* Clock.currentTimeMillis
+      const current = yield* status.get(sessionID)
+
+      expect(current.type).toBe("retry")
+      if (current.type !== "retry") throw new Error("expected retry status")
+      expect(current.next).toBeGreaterThanOrEqual(before + 1234)
+      expect(current.next).toBeLessThanOrEqual(after + 1234)
     }),
   )
 })

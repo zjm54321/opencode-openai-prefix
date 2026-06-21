@@ -1,0 +1,115 @@
+name: fork-release
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: "Release version (with or without leading v)"
+        required: true
+        type: string
+      draft:
+        description: "Create the GitHub Release as a draft"
+        required: false
+        type: boolean
+        default: false
+      prerelease:
+        description: "Mark the GitHub Release as a prerelease"
+        required: false
+        type: boolean
+        default: false
+      skip_embed_web_ui:
+        description: "Skip embedding the web UI in CLI binaries for a smaller/faster release"
+        required: false
+        type: boolean
+        default: true
+
+concurrency: fork-release-${{ inputs.version }}
+
+permissions:
+  contents: write
+
+jobs:
+  build-cli-release:
+    if: github.repository == 'zjm54321/opencode-openai-prefix'
+    runs-on: ubuntu-24.04
+    env:
+      GH_REPO: zjm54321/opencode-openai-prefix
+      GH_TOKEN: ${{ github.token }}
+      OPENCODE_RELEASE: "1"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Setup Bun
+        uses: ./.github/actions/setup-bun
+
+      - name: Prepare release metadata
+        id: meta
+        shell: bash
+        run: |
+          version="${{ inputs.version }}"
+          version="${version#v}"
+          if [ -z "$version" ]; then
+            echo "version input is required" >&2
+            exit 1
+          fi
+          if [[ ! "$version" =~ ^[0-9A-Za-z._-]+$ ]]; then
+            echo "version may only contain letters, numbers, dot, underscore, and dash" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "OPENCODE_VERSION=$version" >> "$GITHUB_ENV"
+          echo "OPENCODE_RELEASE=1" >> "$GITHUB_ENV"
+          echo "GH_REPO=$GH_REPO" >> "$GITHUB_ENV"
+
+      - name: Create or reuse draft GitHub Release
+        shell: bash
+        run: |
+          tag="v${{ steps.meta.outputs.version }}"
+          flags=()
+          if [ "${{ inputs.prerelease }}" = "true" ]; then
+            flags+=(--prerelease)
+          fi
+
+          if gh release view "$tag" --repo "$GH_REPO" >/dev/null 2>&1; then
+            echo "Release $tag already exists; build will clobber matching assets."
+            exit 0
+          fi
+
+          gh release create "$tag" \
+            --repo "$GH_REPO" \
+            --target "$GITHUB_SHA" \
+            --title "opencode $tag" \
+            --notes "Fork CLI release for zjm54321/opencode-openai-prefix." \
+            --draft \
+            "${flags[@]}"
+
+      - name: Build and upload CLI assets
+        shell: bash
+        run: |
+          args=()
+          if [ "${{ inputs.skip_embed_web_ui }}" = "true" ]; then
+            args+=(--skip-embed-web-ui)
+          fi
+          ./packages/opencode/script/build.ts "${args[@]}"
+
+      - name: Upload release assets as workflow artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: opencode-release-assets-${{ steps.meta.outputs.version }}
+          if-no-files-found: error
+          path: |
+            packages/opencode/dist/*.zip
+            packages/opencode/dist/*.tar.gz
+
+      - name: Publish release after successful asset upload
+        if: inputs.draft != true
+        shell: bash
+        run: |
+          tag="v${{ steps.meta.outputs.version }}"
+          gh release edit "$tag" \
+            --repo "$GH_REPO" \
+            --draft=false \
+            --prerelease=${{ inputs.prerelease }}

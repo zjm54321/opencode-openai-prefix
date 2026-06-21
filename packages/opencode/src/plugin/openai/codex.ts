@@ -14,6 +14,10 @@ const OAUTH_PORT = 1455
 const OAUTH_POLLING_SAFETY_MARGIN_MS = 3000
 const ALLOWED_MODELS = new Set(["gpt-5.5", "gpt-5.3-codex-spark", "gpt-5.4", "gpt-5.4-mini"])
 
+function isOpenAIProvider(providerID: string) {
+  return providerID === "openai" || providerID.startsWith("openai-")
+}
+
 interface PkceCodes {
   verifier: string
   challenge: string
@@ -623,7 +627,7 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
       ],
     },
     "chat.headers": async (input, output) => {
-      if (input.model.providerID !== "openai") return
+      if (!isOpenAIProvider(input.model.providerID)) return
       output.headers.originator = "opencode"
       output.headers["User-Agent"] = `opencode/${InstallationVersion} (${os.platform()} ${os.release()}; ${os.arch()})`
       output.headers["session-id"] = input.sessionID
@@ -633,7 +637,7 @@ export async function CodexAuthPlugin(input: PluginInput, options: CodexAuthPlug
       if (websocketFetchInstalled && input.agent === "title") output.headers[OpenAIWebSocketPool.TITLE_HEADER] = "true"
     },
     "chat.params": async (input, output) => {
-      if (input.model.providerID !== "openai") return
+      if (!isOpenAIProvider(input.model.providerID)) return
       // Match codex cli
       output.maxOutputTokens = undefined
     },

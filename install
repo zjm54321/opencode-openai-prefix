@@ -20,8 +20,8 @@ Options:
         --no-modify-path    Don't modify shell config files (.zshrc, .bashrc, etc.)
 
 Examples:
-    curl -fsSL https://opencode.ai/install | bash
-    curl -fsSL https://opencode.ai/install | bash -s -- --version 1.0.180
+    curl -fsSL https://raw.githubusercontent.com/zjm54321/opencode-openai-prefix/dev/install | bash
+    curl -fsSL https://raw.githubusercontent.com/zjm54321/opencode-openai-prefix/dev/install | bash -s -- --version 1.0.180
     ./install --binary /path/to/opencode
 EOF
 }
@@ -68,6 +68,19 @@ done
 INSTALL_DIR=$HOME/.opencode/bin
 mkdir -p "$INSTALL_DIR"
 
+raw_os=$(uname -s)
+os=$(echo "$raw_os" | tr '[:upper:]' '[:lower:]')
+case "$raw_os" in
+  Darwin*) os="darwin" ;;
+  Linux*) os="linux" ;;
+  MINGW*|MSYS*|CYGWIN*) os="windows" ;;
+esac
+
+install_binary_name="opencode"
+if [ "$os" = "windows" ]; then
+  install_binary_name="opencode.exe"
+fi
+
 # If --binary is provided, skip all download/detection logic
 if [ -n "$binary_path" ]; then
     if [ ! -f "$binary_path" ]; then
@@ -76,14 +89,6 @@ if [ -n "$binary_path" ]; then
     fi
     specific_version="local"
 else
-    raw_os=$(uname -s)
-    os=$(echo "$raw_os" | tr '[:upper:]' '[:lower:]')
-    case "$raw_os" in
-      Darwin*) os="darwin" ;;
-      Linux*) os="linux" ;;
-      MINGW*|MSYS*|CYGWIN*) os="windows" ;;
-    esac
-
     arch=$(uname -m)
     if [[ "$arch" == "aarch64" ]]; then
       arch="arm64"
@@ -181,8 +186,8 @@ else
     fi
 
     if [ -z "$requested_version" ]; then
-        url="https://github.com/anomalyco/opencode/releases/latest/download/$filename"
-        specific_version=$(curl -s https://api.github.com/repos/anomalyco/opencode/releases/latest | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
+        url="https://github.com/zjm54321/opencode-openai-prefix/releases/latest/download/$filename"
+        specific_version=$(curl -s https://api.github.com/repos/zjm54321/opencode-openai-prefix/releases/latest | sed -n 's/.*"tag_name": *"v\([^"]*\)".*/\1/p')
 
         if [[ $? -ne 0 || -z "$specific_version" ]]; then
             echo -e "${RED}Failed to fetch version information${NC}"
@@ -191,14 +196,14 @@ else
     else
         # Strip leading 'v' if present
         requested_version="${requested_version#v}"
-        url="https://github.com/anomalyco/opencode/releases/download/v${requested_version}/$filename"
+        url="https://github.com/zjm54321/opencode-openai-prefix/releases/download/v${requested_version}/$filename"
         specific_version=$requested_version
 
         # Verify the release exists before downloading
-        http_status=$(curl -sI -o /dev/null -w "%{http_code}" "https://github.com/anomalyco/opencode/releases/tag/v${requested_version}")
+        http_status=$(curl -sI -o /dev/null -w "%{http_code}" "https://github.com/zjm54321/opencode-openai-prefix/releases/tag/v${requested_version}")
         if [ "$http_status" = "404" ]; then
             echo -e "${RED}Error: Release v${requested_version} not found${NC}"
-            echo -e "${MUTED}Available releases: https://github.com/anomalyco/opencode/releases${NC}"
+            echo -e "${MUTED}Available releases: https://github.com/zjm54321/opencode-openai-prefix/releases${NC}"
             exit 1
         fi
     fi
@@ -340,15 +345,24 @@ download_and_install() {
         unzip -q "$tmp_dir/$filename" -d "$tmp_dir"
     fi
 
-    mv "$tmp_dir/opencode" "$INSTALL_DIR"
-    chmod 755 "${INSTALL_DIR}/opencode"
+    local extracted_binary="$tmp_dir/opencode"
+    if [ -f "$tmp_dir/opencode.exe" ]; then
+        extracted_binary="$tmp_dir/opencode.exe"
+    fi
+    if [ ! -f "$extracted_binary" ]; then
+        echo -e "${RED}Error: archive did not contain opencode or opencode.exe${NC}"
+        exit 1
+    fi
+
+    mv "$extracted_binary" "$INSTALL_DIR/$install_binary_name"
+    chmod 755 "$INSTALL_DIR/$install_binary_name"
     rm -rf "$tmp_dir"
 }
 
 install_from_binary() {
     print_message info "\n${MUTED}Installing ${NC}opencode ${MUTED}from: ${NC}$binary_path"
-    cp "$binary_path" "${INSTALL_DIR}/opencode"
-    chmod 755 "${INSTALL_DIR}/opencode"
+    cp "$binary_path" "$INSTALL_DIR/$install_binary_name"
+    chmod 755 "$INSTALL_DIR/$install_binary_name"
 }
 
 if [ -n "$binary_path" ]; then

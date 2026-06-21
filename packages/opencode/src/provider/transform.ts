@@ -1119,7 +1119,7 @@ export function options(input: {
     }
   }
 
-  if (input.model.providerID === "openai" || input.providerOptions?.setCacheKey) {
+  if (isOpenAIProvider(input.model.providerID) || input.providerOptions?.setCacheKey) {
     result["promptCacheKey"] = input.sessionID
   }
 
@@ -1219,6 +1219,10 @@ export function options(input: {
   }
 
   return result
+}
+
+function isOpenAIProvider(providerID: string) {
+  return providerID === "openai" || providerID.startsWith("openai-")
 }
 
 export function smallOptions(model: Provider.Model) {

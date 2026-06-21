@@ -149,6 +149,31 @@ describe("plugin.codex", () => {
     await enabled.dispose?.()
   })
 
+  test("applies chat hooks to openai-* aliases", async () => {
+    const hooks = await CodexAuthPlugin({} as never)
+    const input = {
+      model: { providerID: "openai-any" },
+      sessionID: "session-123",
+      agent: "build",
+    } as never
+    const headers = { headers: {} as Record<string, string> }
+    const params = {
+      temperature: 0,
+      topP: 1,
+      topK: 0,
+      maxOutputTokens: 128 as number | undefined,
+      options: {} as Record<string, any>,
+    }
+
+    await hooks["chat.headers"]!(input, headers)
+    await hooks["chat.params"]!(input, params)
+
+    expect(headers.headers.originator).toBe("opencode")
+    expect(headers.headers["session-id"]).toBe("session-123")
+    expect(headers.headers["User-Agent"]).toStartWith("opencode/")
+    expect(params.maxOutputTokens).toBeUndefined()
+  })
+
   test("deduplicates concurrent Codex token refreshes", async () => {
     let auth = {
       type: "oauth" as const,
