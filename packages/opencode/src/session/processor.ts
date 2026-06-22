@@ -18,7 +18,7 @@ import type { SessionID } from "./schema"
 import { SessionRetry } from "./retry"
 import { SessionStatus } from "./status"
 import { SessionSummary } from "./summary"
-import type { Provider } from "@/provider/provider"
+import { Provider } from "@/provider/provider"
 import { Question } from "@/question"
 import { errorMessage } from "@/util/error"
 import { isRecord } from "@/util/record"
@@ -106,6 +106,7 @@ export const layer = Layer.effect(
     const events = yield* EventV2Bridge.Service
     const flags = yield* RuntimeFlags.Service
     const database = yield* Database.Service
+    const provider = yield* Provider.Service
 
     const create = Effect.fn("SessionProcessor.create")(function* (input: Input) {
       // Pre-capture snapshot before the LLM stream starts. The AI SDK
@@ -134,6 +135,7 @@ export const layer = Layer.effect(
           providerID: input.model.providerID,
           aborted,
         })
+      const retry = (yield* provider.getProvider(input.model.providerID))?.options.retry
 
       const settleToolCall = Effect.fn("SessionProcessor.settleToolCall")(function* (toolCallID: string) {
         const done = ctx.toolcalls[toolCallID]?.done
@@ -995,6 +997,7 @@ export const layer = Layer.effect(
               SessionRetry.policy({
                 provider: input.model.providerID,
                 parse,
+                retry,
                 set: (info) => {
                   // TODO(v2): Temporary dual-write while migrating session messages to v2 events.
                   const event = mirrorAssistant
@@ -1059,6 +1062,7 @@ export const defaultLayer = Layer.suspend(() =>
     Layer.provide(SessionStatus.defaultLayer),
     Layer.provide(Image.defaultLayer),
     Layer.provide(Config.defaultLayer),
+    Layer.provide(Provider.defaultLayer),
     Layer.provide(RuntimeFlags.defaultLayer),
     Layer.provide(Database.defaultLayer),
     Layer.provide(EventV2Bridge.defaultLayer),
@@ -1079,6 +1083,7 @@ export const node = LayerNode.make(layer, [
   EventV2Bridge.node,
   RuntimeFlags.node,
   Database.node,
+  Provider.node,
 ])
 
 export * as SessionProcessor from "./processor"

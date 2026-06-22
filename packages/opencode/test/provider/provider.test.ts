@@ -1190,6 +1190,73 @@ it.instance(
 )
 
 it.instance(
+  "openai-* config providers inherit OpenAI catalog without OpenAI credentials",
+  Effect.gen(function* () {
+    yield* set("OPENAI_API_KEY", "real-openai-key")
+    const aliasID = ProviderV2.ID.make("openai-any")
+    const providers = yield* list
+    const alias = providers[aliasID]
+
+    expect(alias).toBeDefined()
+    expect(alias.name).toBe("AnyRouter")
+    expect(alias.source).toBe("config")
+    expect(alias.env).toEqual([])
+    expect(alias.key).toBeUndefined()
+    expect(alias.options.apiKey).toBe("alias-key")
+    expect(alias.options.baseURL).toBe("https://anyrouter.example/v1")
+    expect(alias.options.headerTimeout).toBe(10_000)
+    expect(providers[ProviderV2.ID.openai].key).toBe("real-openai-key")
+
+    if (providers[ProviderV2.ID.openai].models["gpt-5.5"]) expect(alias.models["gpt-5.5"]).toBeDefined()
+    const modelID = alias.models["gpt-5.5"] ? "gpt-5.5" : Object.keys(alias.models)[0]
+    expect(modelID).toBeDefined()
+    expect(alias.models[modelID].api.npm).toBe("@ai-sdk/openai")
+    expect(String(alias.models[modelID].providerID)).toBe("openai-any")
+  }),
+  {
+    config: {
+      provider: {
+        "openai-any": {
+          name: "AnyRouter",
+          options: { apiKey: "alias-key", baseURL: "https://anyrouter.example/v1" },
+        },
+      },
+    },
+  },
+)
+
+it.instance(
+  "openai-* config providers use OpenAI Responses model loader with alias options",
+  Effect.gen(function* () {
+    const aliasID = ProviderV2.ID.make("openai-any")
+    const provider = yield* Provider.Service
+    const providers = yield* list
+    const modelID = providers[aliasID].models["gpt-5.5"] ? "gpt-5.5" : Object.keys(providers[aliasID].models)[0]
+    const model = yield* provider.getModel(aliasID, ModelV2.ID.make(modelID))
+    const language = yield* provider.getLanguage(model)
+
+    expect((language as { provider: string }).provider).toBe("openai-any.responses")
+    expect((language as { modelId: string }).modelId).toBe(model.api.id)
+    expect(
+      (language as unknown as { config: { url: (input: { path: string; modelId: string }) => string } }).config.url({
+        path: "/responses",
+        modelId: model.api.id,
+      }),
+    ).toBe("https://anyrouter.example/v1/responses")
+  }),
+  {
+    config: {
+      provider: {
+        "openai-any": {
+          name: "AnyRouter",
+          options: { apiKey: "alias-key", baseURL: "https://anyrouter.example/v1" },
+        },
+      },
+    },
+  },
+)
+
+it.instance(
   "custom model inherits api.url from models.dev provider",
   Effect.gen(function* () {
     yield* set("OPENROUTER_API_KEY", "test-api-key")

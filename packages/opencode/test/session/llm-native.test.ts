@@ -390,6 +390,21 @@ describe("session.llm-native.request", () => {
     })
     expect(
       LLMNativeRuntime.status({
+        model: { ...baseModel, providerID: ProviderV2.ID.make("openai-any") },
+        provider: {
+          ...providerInfo,
+          id: ProviderV2.ID.make("openai-any"),
+          options: { apiKey: "alias-key", baseURL: "https://anyrouter.example/v1" },
+        },
+        auth: undefined,
+      }),
+    ).toMatchObject({
+      type: "supported",
+      apiKey: "alias-key",
+      baseURL: "https://anyrouter.example/v1",
+    })
+    expect(
+      LLMNativeRuntime.status({
         model: { ...baseModel, providerID: ProviderV2.ID.make("opencode") },
         provider: { ...providerInfo, id: ProviderV2.ID.make("opencode") },
         auth: undefined,

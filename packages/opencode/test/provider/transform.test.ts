@@ -86,6 +86,20 @@ describe("ProviderTransform.options - setCacheKey", () => {
     expect(result.promptCacheKey).toBe(sessionID)
   })
 
+  test("should set promptCacheKey for openai-* provider aliases", () => {
+    const openaiAliasModel = {
+      ...mockModel,
+      providerID: "openai-any",
+      api: {
+        id: "gpt-5.5",
+        url: "https://anyrouter.example/v1",
+        npm: "@ai-sdk/openai",
+      },
+    }
+    const result = ProviderTransform.options({ model: openaiAliasModel, sessionID, providerOptions: {} })
+    expect(result.promptCacheKey).toBe(sessionID)
+  })
+
   test("should set store=false for openai provider", () => {
     const openaiModel = {
       ...mockModel,

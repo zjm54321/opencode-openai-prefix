@@ -1068,6 +1068,29 @@ export function toPublicInfo(provider: Info): Info {
   )
 }
 
+function isOpenAIProviderAlias(providerID: string) {
+  return providerID.startsWith("openai-")
+}
+
+function isOpenAIProvider(providerID: string) {
+  return providerID === "openai" || isOpenAIProviderAlias(providerID)
+}
+
+function cloneProviderForAlias(providerID: ProviderV2.ID, provider: Info): Info {
+  const alias = toPublicInfo(provider)
+  alias.id = providerID
+  alias.name = providerID
+  alias.source = "custom"
+  alias.env = []
+  delete alias.key
+  alias.options = {}
+  alias.models = mapValues(alias.models, (model) => ({
+    ...model,
+    providerID,
+  }))
+  return alias
+}
+
 export function defaultModelIDs<T extends { models: Record<string, { id: string }> }>(providers: Record<string, T>) {
   return mapValues(providers, (item) => sort(Object.values(item.models))[0].id)
 }
@@ -1319,6 +1342,7 @@ export const layer = Layer.effect(
           env: () => env.all(),
           get: (key: string) => env.get(key),
         }
+        const customLoaders = custom(dep)
 
         function mergeProvider(providerID: ProviderV2.ID, provider: Partial<Info>) {
           const existing = providers[providerID]
@@ -1376,7 +1400,12 @@ export const layer = Layer.effect(
 
         // extend database from config
         for (const [providerID, provider] of configProviders) {
-          const existing = database[providerID]
+          const existing =
+            database[providerID] ??
+            (isOpenAIProviderAlias(providerID) && catalog[ProviderV2.ID.openai]
+              ? cloneProviderForAlias(ProviderV2.ID.make(providerID), catalog[ProviderV2.ID.openai])
+              : undefined)
+          if (existing && !database[providerID]) database[providerID] = existing
           const parsed: Info = {
             id: ProviderV2.ID.make(providerID),
             name: provider.name ?? existing?.name ?? providerID,
@@ -1515,7 +1544,7 @@ export const layer = Layer.effect(
           mergeProvider(providerID, patch)
         }
 
-        for (const [id, fn] of Object.entries(custom(dep))) {
+        for (const [id, fn] of Object.entries(customLoaders)) {
           const providerID = ProviderV2.ID.make(id)
           if (disabled.has(providerID)) continue
           const data = database[providerID]
@@ -1541,6 +1570,16 @@ export const layer = Layer.effect(
           if (provider.name) partial.name = provider.name
           if (provider.options) partial.options = provider.options
           mergeProvider(providerID, partial)
+        }
+
+        for (const [id, provider] of Object.entries(providers)) {
+          const providerID = ProviderV2.ID.make(id)
+          if (disabled.has(providerID)) continue
+          if (!isOpenAIProvider(providerID)) continue
+          const result = yield* customLoaders.openai(provider)
+          if (result.getModel) modelLoaders[providerID] = result.getModel
+          if (result.vars) varsLoaders[providerID] = result.vars
+          if (result.options) provider.options = mergeDeep(result.options, provider.options ?? {}) as Record<string, any>
         }
 
         const gitlab = ProviderV2.ID.make("gitlab")
@@ -1572,7 +1611,7 @@ export const layer = Layer.effect(
               // These chat aliases are invalid for the special handling in the
               // built-in providers below, but custom providers may support them.
               (modelID === "gpt-5-chat-latest" &&
-                (providerID === ProviderV2.ID.openai ||
+                (isOpenAIProvider(providerID) ||
                   providerID === ProviderV2.ID.githubCopilot ||
                   providerID === ProviderV2.ID.openrouter)) ||
               (providerID === ProviderV2.ID.openrouter && modelID === "openai/gpt-5-chat")
