@@ -1575,11 +1575,10 @@ export const layer = Layer.effect(
         for (const [id, provider] of Object.entries(providers)) {
           const providerID = ProviderV2.ID.make(id)
           if (disabled.has(providerID)) continue
-          if (!isOpenAIProvider(providerID)) continue
+          if (!isOpenAIProviderAlias(providerID)) continue
           const result = yield* customLoaders.openai(provider)
           if (result.getModel) modelLoaders[providerID] = result.getModel
           if (result.vars) varsLoaders[providerID] = result.vars
-          if (result.options) provider.options = mergeDeep(result.options, provider.options ?? {}) as Record<string, any>
         }
 
         const gitlab = ProviderV2.ID.make("gitlab")

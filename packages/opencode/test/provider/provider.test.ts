@@ -1204,7 +1204,7 @@ it.instance(
     expect(alias.key).toBeUndefined()
     expect(alias.options.apiKey).toBe("alias-key")
     expect(alias.options.baseURL).toBe("https://anyrouter.example/v1")
-    expect(alias.options.headerTimeout).toBe(10_000)
+    expect(alias.options.headerTimeout).toBeUndefined()
     expect(providers[ProviderV2.ID.openai].key).toBe("real-openai-key")
 
     if (providers[ProviderV2.ID.openai].models["gpt-5.5"]) expect(alias.models["gpt-5.5"]).toBeDefined()
